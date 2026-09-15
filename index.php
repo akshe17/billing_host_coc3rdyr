@@ -28,15 +28,29 @@ $page = $_GET['page'] ?? $defaultPage;
 // ---------- Allowed pages per role ----------
 $allowed = [
     1 => [
+        // Main
         'dashboard',
+
+        // People
         'users', 'users-create',
         'doctors', 'patients',
+
+        // Reports
         'billing', 'reports',
-        'master/gender', 'master/role', 'master/room-status',
-        'master/admission-status', 'master/billing-status',
-        'master/payment-type', 'master/specialization',
-        'master/diagnosis', 'master/charge-category',
-        'master/charge-item', 'master/room-type', 'master/room',
+
+        // Master files (flat URLs)
+        'gender',
+        'role',
+        'room-status',
+        'admission-status',
+        'billing-status',
+        'payment-type',
+        'specialization',
+        'diagnosis',
+        'charge-category',
+        'charge-item',
+        'room-type',
+        'room',
     ],
     2 => ['doctor'],
     3 => ['nurse'],
@@ -71,13 +85,19 @@ if (!file_exists($contentFile)) {
 $pageTitle = ucwords(str_replace(['-', '/'], [' ', ' · '], $page));
 
 // ---------- Auto page script ----------
-// Mirrors views/ in assets/js/
-// e.g. users          → /assets/js/users.js
-//      master/gender  → /assets/js/master/gender.js
-$jsPath = __DIR__ . '/assets/js/' . $page . '.js';
-$pageScript = file_exists($jsPath)
-    ? BASE_URL . '/assets/js/' . $page . '.js'
-    : null;
+// Look in assets/js/master/ first, then assets/js/
+$jsCandidates = [
+    '/assets/js/master/' . $page . '.js',
+    '/assets/js/'        . $page . '.js',
+];
+
+$pageScript = null;
+foreach ($jsCandidates as $relPath) {
+    if (file_exists(__DIR__ . $relPath)) {
+        $pageScript = BASE_URL . $relPath;
+        break;
+    }
+}
 
 // ---------- Sidebar highlight ----------
 $currentPage = $page;
