@@ -57,15 +57,12 @@ $roles = $pdo->query('SELECT role_id, role_name FROM `role` ORDER BY role_id')->
             </select>
         </div>
 
-        <div>
-            <label class="block text-xs font-medium text-slate-500 mb-1">Status</label>
-            <select id="filterStatus"
-                    class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white
-                           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                <option value="">All statuses</option>
-                <option value="1">Active</option>
-                <option value="0">Archived</option>
-            </select>
+        <div class="flex items-end">
+            <label class="inline-flex items-center gap-2 text-sm text-slate-700 select-none cursor-pointer">
+                <input type="checkbox" id="showArchived"
+                       class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+                Show archived
+            </label>
         </div>
 
     </div>
@@ -79,6 +76,7 @@ $roles = $pdo->query('SELECT role_id, role_name FROM `role` ORDER BY role_id')->
     </div>
 </div>
 
+<!-- ============ TABLE ============ -->
 <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
     <table class="min-w-full text-sm">
         <thead class="bg-slate-50 text-slate-600">
@@ -115,33 +113,39 @@ $roles = $pdo->query('SELECT role_id, role_name FROM `role` ORDER BY role_id')->
                     </td>
                     <td class="px-6 py-3 text-right whitespace-nowrap">
 
-                        <button type="button"
-                                class="edit-btn inline-flex items-center rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                                data-user='<?= htmlspecialchars(json_encode($u), ENT_QUOTES, "UTF-8") ?>'>
-                            Edit
-                        </button>
-
-                        <button type="button"
-                                class="pw-btn inline-flex items-center rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 ml-1"
-                                data-user-id="<?= (int)$u['user_id'] ?>"
-                                data-user-name="<?= htmlspecialchars($u['first_name'] . ' ' . $u['last_name']) ?>">
-                            Password
-                        </button>
-
-                        <?php if ((int)$u['is_active'] === 1): ?>
-                            <button type="button"
-                                    class="deactivate-btn inline-flex items-center rounded-md bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 ml-1"
-                                    data-user-id="<?= (int)$u['user_id'] ?>"
-                                    data-user-name="<?= htmlspecialchars($u['first_name'] . ' ' . $u['last_name']) ?>">
-                                Deactivate
-                            </button>
+                        <?php if ((int)$u['role_id'] === 2): ?>
+                            <span class="text-xs text-slate-400 italic">Managed on Doctors page</span>
                         <?php else: ?>
+
                             <button type="button"
-                                    class="reactivate-btn inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 ml-1"
+                                    class="edit-btn inline-flex items-center rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                    data-user='<?= htmlspecialchars(json_encode($u), ENT_QUOTES, "UTF-8") ?>'>
+                                Edit
+                            </button>
+
+                            <button type="button"
+                                    class="pw-btn inline-flex items-center rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 ml-1"
                                     data-user-id="<?= (int)$u['user_id'] ?>"
                                     data-user-name="<?= htmlspecialchars($u['first_name'] . ' ' . $u['last_name']) ?>">
-                                Reactivate
+                                Password
                             </button>
+
+                            <?php if ((int)$u['is_active'] === 1): ?>
+                                <button type="button"
+                                        class="deactivate-btn inline-flex items-center rounded-md bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 ml-1"
+                                        data-user-id="<?= (int)$u['user_id'] ?>"
+                                        data-user-name="<?= htmlspecialchars($u['first_name'] . ' ' . $u['last_name']) ?>">
+                                    Deactivate
+                                </button>
+                            <?php else: ?>
+                                <button type="button"
+                                        class="reactivate-btn inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 ml-1"
+                                        data-user-id="<?= (int)$u['user_id'] ?>"
+                                        data-user-name="<?= htmlspecialchars($u['first_name'] . ' ' . $u['last_name']) ?>">
+                                    Reactivate
+                                </button>
+                            <?php endif; ?>
+
                         <?php endif; ?>
 
                     </td>
@@ -150,7 +154,6 @@ $roles = $pdo->query('SELECT role_id, role_name FROM `role` ORDER BY role_id')->
         </tbody>
     </table>
 
-    <!-- Empty state (shown when filters hide everything) -->
     <div id="emptyState" class="hidden text-center py-12 text-slate-400">
         <p class="text-sm">No users match your filters.</p>
     </div>
@@ -218,6 +221,7 @@ $roles = $pdo->query('SELECT role_id, role_name FROM `role` ORDER BY role_id')->
                             class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                         <option value="">— Select a role —</option>
                         <?php foreach ($roles as $r): ?>
+                            <?php if ((int)$r['role_id'] === 2) continue; ?>
                             <option value="<?= (int)$r['role_id'] ?>">
                                 <?= htmlspecialchars(ucfirst($r['role_name'])) ?>
                             </option>

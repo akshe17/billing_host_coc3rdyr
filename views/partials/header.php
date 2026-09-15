@@ -11,5 +11,6 @@ $pageTitle = $pageTitle ?? 'Billing Hospital';
     <title><?= htmlspecialchars($pageTitle) ?> · Billing Hospital</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/axios@1.7.7/dist/axios.min.js"></script>
+       <script src="<?= BASE_URL ?>/assets/js/logout.js"></script>
 </head>
 <body data-base-url="<?= BASE_URL ?>" class="min-h-screen bg-slate-100 font-sans antialiased">

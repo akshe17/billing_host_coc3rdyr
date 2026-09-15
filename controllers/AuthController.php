@@ -112,18 +112,16 @@ class AuthController
             'redirect' => $this->redirectForRole((int)$user['role_id']),
         ]);
     }
-
-    private function redirectForRole(int $roleId): string
-    {
-        return match ($roleId) {
-            1 => '/billing_hospital/index.php?page=admin',
-            2 => '/billing_hospital/index.php?page=doctor',
-            3 => '/billing_hospital/index.php?page=nurse',
-            4 => '/billing_hospital/index.php?page=cashier',
-            default => '/billing_hospital/index.php',
-        };
-    }
-
+private function redirectForRole(int $roleId): string
+{
+    return match ($roleId) {
+        1 => '/billing_hospital/index.php?page=dashboard',   // ← fixed
+        2 => '/billing_hospital/index.php?page=doctor',
+        3 => '/billing_hospital/index.php?page=nurse',
+        4 => '/billing_hospital/index.php?page=cashier',
+        default => '/billing_hospital/index.php',
+    };
+}
     private function json(int $status, array $payload): void
     {
         http_response_code($status);
