@@ -1,5 +1,5 @@
 <?php
-// app/controllers/DoctorController.php
+// controllers/DoctorController.php
 
 class DoctorController
 {
@@ -7,20 +7,64 @@ class DoctorController
 
     public function __construct(PDO $pdo) { $this->pdo = $pdo; }
 
-    // ---------- READ: fetch all doctors for the view ----------
-public function getAll(): array
-{
-    return $this->pdo->query(
-        'SELECT d.doctor_id, d.license_number, d.consultation_fee, d.is_active AS doctor_active,
-                u.user_id, u.username, u.first_name, u.last_name, u.email,
-                u.contact_number, u.is_active
-         FROM `doctor` d
-         INNER JOIN `user` u ON u.user_id = d.user_id
-         ORDER BY d.doctor_id'
-    )->fetchAll();
-}
+    // =========================================================
+    // READ
+    // =========================================================
 
-    // ---------- CREATE ----------
+    public function getAll(): array
+    {
+        $doctors = $this->pdo->query(
+            'SELECT d.doctor_id, d.user_id, d.license_number, d.consultation_fee,
+                    d.is_active AS doctor_active,
+                    u.username, u.first_name, u.last_name, u.email,
+                    u.contact_number, u.is_active
+             FROM `doctor` d
+             INNER JOIN `user` u ON u.user_id = d.user_id
+             ORDER BY d.doctor_id'
+        )->fetchAll();
+
+        // Attach specializations to each doctor
+        if ($doctors) {
+            $ids = array_column($doctors, 'doctor_id');
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+
+            $stmt = $this->pdo->prepare(
+                "SELECT ds.doctor_id, ds.specialization_id, ds.is_primary, s.specialization_name
+                 FROM `doctor_specialization` ds
+                 INNER JOIN `specialization` s ON s.specialization_id = ds.specialization_id
+                 WHERE ds.doctor_id IN ($placeholders)
+                 ORDER BY ds.is_primary DESC, s.specialization_name"
+            );
+            $stmt->execute($ids);
+            $rows = $stmt->fetchAll();
+
+            $byDoctor = [];
+            foreach ($rows as $r) {
+                $byDoctor[(int)$r['doctor_id']][] = $r;
+            }
+
+            foreach ($doctors as &$d) {
+                $d['specializations'] = $byDoctor[(int)$d['doctor_id']] ?? [];
+            }
+            unset($d);
+        }
+
+        return $doctors;
+    }
+
+    public function getSpecializations(): array
+    {
+        return $this->pdo->query(
+            'SELECT specialization_id, specialization_name
+             FROM `specialization`
+             ORDER BY specialization_name'
+        )->fetchAll();
+    }
+
+    // =========================================================
+    // CREATE
+    // =========================================================
+
     public function create(): void
     {
         $this->guard();
@@ -29,14 +73,14 @@ public function getAll(): array
         $errors = $this->validate($data, null, true);
         if ($errors) $this->json(422, ['success' => false, 'message' => 'Please fix the highlighted fields.', 'errors' => $errors]);
 
-        if ($this->usernameExists($data['username']))  $this->json(409, ['success' => false, 'errors' => ['username' => 'Username is already in use.']]);
-        if ($this->emailExists($data['email']))        $this->json(409, ['success' => false, 'errors' => ['email' => 'Email is already registered.']]);
-        if ($this->licenseExists($data['license_number'])) $this->json(409, ['success' => false, 'errors' => ['license_number' => 'License number is already registered.']]);
+        if ($this->usernameExists($data['username']))       $this->json(409, ['success' => false, 'errors' => ['username' => 'Username is already in use.']]);
+        if ($this->emailExists($data['email']))             $this->json(409, ['success' => false, 'errors' => ['email' => 'Email is already registered.']]);
+        if ($this->licenseExists($data['license_number']))  $this->json(409, ['success' => false, 'errors' => ['license_number' => 'License number is already registered.']]);
 
         try {
             $this->pdo->beginTransaction();
 
-            // 1. Insert into `user` with role_id = 2 (doctor)
+            // 1. Insert into `user`
             $hash = password_hash((string)$data['password'], PASSWORD_BCRYPT);
             $stmt = $this->pdo->prepare(
                 'INSERT INTO `user`
@@ -65,6 +109,9 @@ public function getAll(): array
             ]);
             $doctorId = (int)$this->pdo->lastInsertId();
 
+            // 3. Insert specializations
+            $this->saveSpecializations($doctorId, $data['specializations'] ?? [], (int)($data['primary_specialization_id'] ?? 0));
+
             $this->pdo->commit();
 
             $this->json(201, [
@@ -80,7 +127,10 @@ public function getAll(): array
         }
     }
 
-    // ---------- UPDATE ----------
+    // =========================================================
+    // UPDATE
+    // =========================================================
+
     public function update(): void
     {
         $this->guard();
@@ -88,7 +138,6 @@ public function getAll(): array
         $doctorId = (int)($_GET['id'] ?? 0);
         if ($doctorId <= 0) $this->json(400, ['success' => false, 'message' => 'Missing doctor id.']);
 
-        // Fetch doctor + user_id
         $stmt = $this->pdo->prepare('SELECT doctor_id, user_id FROM `doctor` WHERE doctor_id = ? LIMIT 1');
         $stmt->execute([$doctorId]);
         $doctor = $stmt->fetch();
@@ -99,8 +148,8 @@ public function getAll(): array
         $errors = $this->validate($data, $userId, false);
         if ($errors) $this->json(422, ['success' => false, 'message' => 'Please fix the highlighted fields.', 'errors' => $errors]);
 
-        if ($this->usernameExists($data['username'], $userId))   $this->json(409, ['success' => false, 'errors' => ['username' => 'Username is already in use.']]);
-        if ($this->emailExists($data['email'], $userId))         $this->json(409, ['success' => false, 'errors' => ['email' => 'Email is already registered.']]);
+        if ($this->usernameExists($data['username'], $userId))       $this->json(409, ['success' => false, 'errors' => ['username' => 'Username is already in use.']]);
+        if ($this->emailExists($data['email'], $userId))             $this->json(409, ['success' => false, 'errors' => ['email' => 'Email is already registered.']]);
         if ($this->licenseExists($data['license_number'], $doctorId)) $this->json(409, ['success' => false, 'errors' => ['license_number' => 'License number is already registered.']]);
 
         try {
@@ -123,15 +172,18 @@ public function getAll(): array
 
             // 2. Update `doctor`
             $stmt = $this->pdo->prepare(
-                'UPDATE `doctor`
-                 SET license_number = ?, consultation_fee = ?
-                 WHERE doctor_id = ?'
+                'UPDATE `doctor` SET license_number = ?, consultation_fee = ? WHERE doctor_id = ?'
             );
             $stmt->execute([
                 $data['license_number'],
                 (float)$data['consultation_fee'],
                 $doctorId,
             ]);
+
+            // 3. Replace specializations
+            $stmt = $this->pdo->prepare('DELETE FROM `doctor_specialization` WHERE doctor_id = ?');
+            $stmt->execute([$doctorId]);
+            $this->saveSpecializations($doctorId, $data['specializations'] ?? [], (int)($data['primary_specialization_id'] ?? 0));
 
             $this->pdo->commit();
             $this->json(200, ['success' => true, 'message' => 'Doctor updated successfully.']);
@@ -142,7 +194,10 @@ public function getAll(): array
         }
     }
 
-    // ---------- CHANGE PASSWORD ----------
+    // =========================================================
+    // CHANGE PASSWORD
+    // =========================================================
+
     public function changePassword(): void
     {
         $this->guard();
@@ -175,7 +230,10 @@ public function getAll(): array
         $this->json(200, ['success' => true, 'message' => 'Password updated successfully.']);
     }
 
-    // ---------- SOFT DELETE / REACTIVATE ----------
+    // =========================================================
+    // TOGGLE ACTIVE
+    // =========================================================
+
     public function toggleActive(): void
     {
         $this->guard();
@@ -189,7 +247,6 @@ public function getAll(): array
         if (!$row) $this->json(404, ['success' => false, 'message' => 'Doctor not found.']);
         $userId = (int)$row['user_id'];
 
-        // Prevent self-archiving
         if ($userId === (int)$_SESSION['user']['user_id']) {
             $this->json(409, ['success' => false, 'message' => 'You cannot archive your own account.']);
         }
@@ -203,11 +260,9 @@ public function getAll(): array
 
         $this->pdo->beginTransaction();
         try {
-            // Update user account
             $stmt = $this->pdo->prepare('UPDATE `user` SET is_active = ? WHERE user_id = ?');
             $stmt->execute([$newState, $userId]);
 
-            // Keep doctor row in sync
             $stmt = $this->pdo->prepare('UPDATE `doctor` SET is_active = ? WHERE doctor_id = ?');
             $stmt->execute([$newState, $doctorId]);
 
@@ -224,12 +279,43 @@ public function getAll(): array
         ]);
     }
 
-    // ---------- HELPERS ----------
+    // =========================================================
+    // HELPERS
+    // =========================================================
+
+    private function saveSpecializations(int $doctorId, array $specIds, int $primaryId): void
+    {
+        $specIds = array_values(array_unique(array_filter(array_map('intval', $specIds), fn($v) => $v > 0)));
+
+        if (!$specIds) return;
+
+        // Validate that they exist
+        $placeholders = implode(',', array_fill(0, count($specIds), '?'));
+        $stmt = $this->pdo->prepare("SELECT specialization_id FROM `specialization` WHERE specialization_id IN ($placeholders)");
+        $stmt->execute($specIds);
+        $valid = array_column($stmt->fetchAll(), 'specialization_id');
+
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO `doctor_specialization` (doctor_id, specialization_id, is_primary)
+             VALUES (?, ?, ?)'
+        );
+
+        foreach ($valid as $sid) {
+            $isPrimary = ((int)$sid === $primaryId) ? 'Yes' : 'No';
+            $stmt->execute([$doctorId, (int)$sid, $isPrimary]);
+        }
+    }
+
     private function guard(): void
     {
         header('Content-Type: application/json; charset=utf-8');
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->json(405, ['success' => false, 'message' => 'Method not allowed.']);
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            $this->json(405, ['success' => false, 'message' => 'Method not allowed.']);
+        }
+
         if (session_status() === PHP_SESSION_NONE) session_start();
+
         if (empty($_SESSION['user']) || (int)$_SESSION['user']['role_id'] !== 1) {
             $this->json(403, ['success' => false, 'message' => 'Access denied.']);
         }
@@ -260,6 +346,13 @@ public function getAll(): array
 
         $fee = $data['consultation_fee'] ?? '';
         if ($fee === '' || !is_numeric($fee) || (float)$fee < 0) $errors['consultation_fee'] = 'Enter a valid consultation fee.';
+
+        // Primary specialization must be among the selected ones
+        $primaryId = (int)($data['primary_specialization_id'] ?? 0);
+        $specIds   = array_map('intval', $data['specializations'] ?? []);
+        if ($primaryId > 0 && !in_array($primaryId, $specIds, true)) {
+            $errors['primary_specialization_id'] = 'Primary must be one of the selected specializations.';
+        }
 
         if ($requirePassword) {
             $password = (string)($data['password'] ?? '');

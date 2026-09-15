@@ -1,30 +1,38 @@
-// assets/js/doctors.js
+// assets/js/master/doctors.js
 
 document.addEventListener("DOMContentLoaded", () => {
   const baseUrl = document.body.dataset.baseUrl || "";
-
   const alertBox = document.getElementById("alert");
 
-  const doctorModal = document.getElementById("doctorModal");
-  const doctorForm = document.getElementById("doctorForm");
-  const doctorModalTitle = document.getElementById("doctorModalTitle");
-  const doctorSubmitBtn = document.getElementById("doctorSubmitBtn");
-  const doctorSubmitLbl = document.getElementById("doctorSubmitLabel");
-  const openCreateBtn = document.getElementById("openCreateBtn");
-  const passwordWrap = document.getElementById("passwordFieldWrapper");
+  // Modals / forms
+  const modal = document.getElementById("doctorModal");
+  const form = document.getElementById("doctorForm");
+  const modalTitle = document.getElementById("doctorModalTitle");
+  const submitBtn = document.getElementById("doctorSubmitBtn");
+  const submitLbl = document.getElementById("doctorSubmitLabel");
+  const openCreate = document.getElementById("openCreateBtn");
 
+  // Password modal
   const pwModal = document.getElementById("pwModal");
   const pwForm = document.getElementById("pwForm");
   const pwDoctorName = document.getElementById("pwDoctorName");
   const pwSubmitBtn = document.getElementById("pwSubmitBtn");
   const pwSubmitLbl = document.getElementById("pwSubmitLabel");
 
+  // Confirm archive modal
   const confirmModal = document.getElementById("confirmModal");
-  const confirmDoctorName = document.getElementById("confirmDoctorName");
+  const confirmName = document.getElementById("confirmDoctorName");
   const confirmDeactivateBtn = document.getElementById("confirmDeactivateBtn");
   const confirmDeactivateLbl = document.getElementById(
     "confirmDeactivateLabel",
   );
+
+  // Specialization widgets
+  const specCheckboxes = document.querySelectorAll(".spec-checkbox");
+  const specCount = document.getElementById("specCount");
+  const primaryWrapper = document.getElementById("primaryWrapper");
+  const primarySelect = document.getElementById("primary_specialization_id");
+  const passwordFieldWrap = document.getElementById("passwordFieldWrapper");
 
   // ---------- Helpers ----------
   const showAlert = (msg, type = "error") => {
@@ -55,9 +63,54 @@ document.addEventListener("DOMContentLoaded", () => {
   const openModal = (el) => el.classList.remove("hidden");
   const closeModal = (el) => el.classList.add("hidden");
 
+  // ---------- Specialization UI sync ----------
+  function refreshSpecializationUI() {
+    const checked = Array.from(specCheckboxes).filter((cb) => cb.checked);
+
+    // Update count
+    if (specCount) specCount.textContent = `${checked.length} selected`;
+
+    // Highlight selected
+    specCheckboxes.forEach((cb) => {
+      const wrapper = cb.closest(".spec-checkbox-wrapper");
+      if (!wrapper) return;
+      if (cb.checked) {
+        wrapper.classList.add("bg-blue-50", "border-blue-300");
+        wrapper.classList.remove("border-slate-200");
+      } else {
+        wrapper.classList.remove("bg-blue-50", "border-blue-300");
+        wrapper.classList.add("border-slate-200");
+      }
+    });
+
+    // Rebuild primary dropdown
+    const previousValue = primarySelect?.value || "";
+    if (primarySelect) {
+      primarySelect.innerHTML =
+        '<option value="">— None marked as primary —</option>';
+      checked.forEach((cb) => {
+        const label =
+          cb.closest("label")?.querySelector("span")?.textContent?.trim() || "";
+        const opt = document.createElement("option");
+        opt.value = cb.value;
+        opt.textContent = label;
+        if (cb.value === previousValue) opt.selected = true;
+        primarySelect.appendChild(opt);
+      });
+    }
+
+    // Show/hide primary wrapper
+    if (primaryWrapper)
+      primaryWrapper.classList.toggle("hidden", checked.length < 2);
+  }
+
+  specCheckboxes.forEach((cb) =>
+    cb.addEventListener("change", refreshSpecializationUI),
+  );
+
   // ---------- Modal close handlers ----------
   document.querySelectorAll("[data-close-modal]").forEach((el) => {
-    el.addEventListener("click", () => closeModal(doctorModal));
+    el.addEventListener("click", () => closeModal(modal));
   });
   document.querySelectorAll("[data-close-pw]").forEach((el) => {
     el.addEventListener("click", () => closeModal(pwModal));
@@ -67,7 +120,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
-      closeModal(doctorModal);
+      closeModal(modal);
       closeModal(pwModal);
       closeModal(confirmModal);
     }
@@ -76,16 +129,20 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   // CREATE
   // =========================================================
-  openCreateBtn.addEventListener("click", () => {
-    doctorForm.reset();
-    clearErrors(doctorForm);
-    document.getElementById("doctor_id").value = "";
-    doctorModalTitle.textContent = "New Doctor";
-    doctorSubmitLbl.textContent = "Create Doctor";
-    passwordWrap.classList.remove("hidden");
-    document.getElementById("password").required = true;
-    openModal(doctorModal);
-  });
+  if (openCreate) {
+    openCreate.addEventListener("click", () => {
+      form.reset();
+      clearErrors(form);
+      document.getElementById("doctor_id").value = "";
+      specCheckboxes.forEach((cb) => (cb.checked = false));
+      modalTitle.textContent = "New Doctor";
+      submitLbl.textContent = "Create Doctor";
+      passwordFieldWrap.classList.remove("hidden");
+      document.getElementById("password").required = true;
+      refreshSpecializationUI();
+      openModal(modal);
+    });
+  }
 
   // =========================================================
   // EDIT
@@ -94,11 +151,11 @@ document.addEventListener("DOMContentLoaded", () => {
     btn.addEventListener("click", () => {
       const d = JSON.parse(btn.dataset.doctor);
 
-      doctorForm.reset();
-      clearErrors(doctorForm);
+      form.reset();
+      clearErrors(form);
 
-      doctorModalTitle.textContent = "Edit Doctor";
-      doctorSubmitLbl.textContent = "Save Changes";
+      modalTitle.textContent = "Edit Doctor";
+      submitLbl.textContent = "Save Changes";
 
       document.getElementById("doctor_id").value = d.doctor_id;
       document.getElementById("first_name").value = d.first_name;
@@ -109,22 +166,43 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("license_number").value = d.license_number;
       document.getElementById("consultation_fee").value = d.consultation_fee;
 
-      passwordWrap.classList.add("hidden");
+      // Specializations
+      specCheckboxes.forEach((cb) => (cb.checked = false));
+      let primaryId = null;
+      (d.specializations || []).forEach((s) => {
+        const cb = Array.from(specCheckboxes).find(
+          (x) => x.value === String(s.specialization_id),
+        );
+        if (cb) {
+          cb.checked = true;
+          if (String(s.is_primary).toLowerCase() === "yes")
+            primaryId = s.specialization_id;
+        }
+      });
+
+      refreshSpecializationUI();
+      if (primarySelect && primaryId) primarySelect.value = String(primaryId);
+
+      passwordFieldWrap.classList.add("hidden");
       document.getElementById("password").required = false;
       document.getElementById("password").value = "";
 
-      openModal(doctorModal);
+      openModal(modal);
     });
   });
 
   // ---------- CREATE / UPDATE submit ----------
-  doctorForm.addEventListener("submit", async (e) => {
+  form.addEventListener("submit", async (e) => {
     e.preventDefault();
     hideAlert();
-    clearErrors(doctorForm);
+    clearErrors(form);
 
     const id = document.getElementById("doctor_id").value;
     const isEdit = id !== "";
+
+    const specializations = Array.from(specCheckboxes)
+      .filter((cb) => cb.checked)
+      .map((cb) => parseInt(cb.value, 10));
 
     const payload = {
       first_name: document.getElementById("first_name").value.trim(),
@@ -134,6 +212,10 @@ document.addEventListener("DOMContentLoaded", () => {
       contact_number: document.getElementById("contact_number").value.trim(),
       license_number: document.getElementById("license_number").value.trim(),
       consultation_fee: document.getElementById("consultation_fee").value,
+      specializations: specializations,
+      primary_specialization_id: primarySelect?.value
+        ? parseInt(primarySelect.value, 10)
+        : 0,
     };
     if (!isEdit) payload.password = document.getElementById("password").value;
 
@@ -141,8 +223,8 @@ document.addEventListener("DOMContentLoaded", () => {
       ? `${baseUrl}/api/doctors/update.php?id=${id}`
       : `${baseUrl}/api/doctors/create.php`;
 
-    doctorSubmitBtn.disabled = true;
-    doctorSubmitLbl.textContent = isEdit ? "Saving…" : "Creating…";
+    submitBtn.disabled = true;
+    submitLbl.textContent = isEdit ? "Saving…" : "Creating…";
 
     try {
       const { data } = await axios.post(url, payload, {
@@ -151,28 +233,24 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       if (data.success) {
-        closeModal(doctorModal);
-        sessionStorage.setItem("doctors_flash", data.message || "Saved.");
+        closeModal(modal);
+        sessionStorage.setItem("doctor_flash", data.message || "Saved.");
         window.location.reload();
       } else {
         if (data.errors) {
-          Object.entries(data.errors).forEach(([f, m]) =>
-            setError(doctorForm, f, m),
-          );
+          Object.entries(data.errors).forEach(([f, m]) => setError(form, f, m));
         }
         showAlert(data.message || "Save failed.", "error");
       }
     } catch (err) {
       const res = err.response?.data;
       if (res?.errors) {
-        Object.entries(res.errors).forEach(([f, m]) =>
-          setError(doctorForm, f, m),
-        );
+        Object.entries(res.errors).forEach(([f, m]) => setError(form, f, m));
       }
       showAlert(res?.message || "Save failed.", "error");
     } finally {
-      doctorSubmitBtn.disabled = false;
-      doctorSubmitLbl.textContent = isEdit ? "Save Changes" : "Create Doctor";
+      submitBtn.disabled = false;
+      submitLbl.textContent = isEdit ? "Save Changes" : "Create Doctor";
     }
   });
 
@@ -183,7 +261,7 @@ document.addEventListener("DOMContentLoaded", () => {
     btn.addEventListener("click", () => {
       pwForm.reset();
       clearErrors(pwForm);
-      pwDoctorName.textContent = btn.dataset.doctorName;
+      pwDoctorName.textContent = btn.dataset.doctorName || "";
       pwForm.dataset.doctorId = btn.dataset.doctorId;
       openModal(pwModal);
     });
@@ -214,7 +292,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (data.success) {
         closeModal(pwModal);
         sessionStorage.setItem(
-          "doctors_flash",
+          "doctor_flash",
           data.message || "Password updated.",
         );
         window.location.reload();
@@ -239,63 +317,69 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // =========================================================
-  // DEACTIVATE
+  // ARCHIVE
   // =========================================================
   document.querySelectorAll(".deactivate-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
-      confirmDoctorName.textContent = btn.dataset.doctorName;
-      confirmDeactivateBtn.dataset.doctorId = btn.dataset.doctorId;
+      confirmName.textContent = btn.getAttribute("data-doctor-name");
+      confirmDeactivateBtn.dataset.doctorId =
+        btn.getAttribute("data-doctor-id");
       openModal(confirmModal);
     });
   });
 
-  confirmDeactivateBtn.addEventListener("click", async () => {
-    const doctorId = confirmDeactivateBtn.dataset.doctorId;
+  if (confirmDeactivateBtn) {
+    confirmDeactivateBtn.addEventListener("click", async () => {
+      const id = confirmDeactivateBtn.dataset.doctorId;
+      if (!id) return;
 
-    confirmDeactivateBtn.disabled = true;
-    confirmDeactivateLbl.textContent = "Archiving…";
+      confirmDeactivateBtn.disabled = true;
+      confirmDeactivateLbl.textContent = "Archiving…";
 
-    try {
-      const { data } = await axios.post(
-        `${baseUrl}/api/doctors/toggle-active.php?id=${doctorId}`,
-        {},
-        {
-          headers: { "Content-Type": "application/json" },
-          withCredentials: true,
-        },
-      );
-
-      if (data.success) {
-        closeModal(confirmModal);
-        sessionStorage.setItem(
-          "doctors_flash",
-          data.message || "Doctor archived.",
+      try {
+        const { data } = await axios.post(
+          `${baseUrl}/api/doctors/toggle-active.php?id=${id}`,
+          {},
+          {
+            headers: { "Content-Type": "application/json" },
+            withCredentials: true,
+          },
         );
-        window.location.reload();
-      } else {
+
+        if (data.success) {
+          closeModal(confirmModal);
+          sessionStorage.setItem(
+            "doctor_flash",
+            data.message || "Doctor archived.",
+          );
+          window.location.reload();
+        } else {
+          closeModal(confirmModal);
+          showAlert(data.message || "Action failed.", "error");
+        }
+      } catch (err) {
         closeModal(confirmModal);
-        showAlert(data.message || "Action failed.", "error");
+        showAlert(err.response?.data?.message || "Action failed.", "error");
+      } finally {
+        confirmDeactivateBtn.disabled = false;
+        confirmDeactivateLbl.textContent = "Archive Doctor";
       }
-    } catch (err) {
-      closeModal(confirmModal);
-      showAlert(err.response?.data?.message || "Action failed.", "error");
-    } finally {
-      confirmDeactivateBtn.disabled = false;
-      confirmDeactivateLbl.textContent = "Yes, archive";
-    }
-  });
+    });
+  }
 
   // =========================================================
   // REACTIVATE
   // =========================================================
   document.querySelectorAll(".reactivate-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const doctorId = btn.dataset.doctorId;
+      const id = btn.getAttribute("data-doctor-id");
+      if (!id) return;
+
       btn.disabled = true;
 
       try {
         const { data } = await axios.post(
-          `${baseUrl}/api/doctors/toggle-active.php?id=${doctorId}`,
+          `${baseUrl}/api/doctors/toggle-active.php?id=${id}`,
           {},
           {
             headers: { "Content-Type": "application/json" },
@@ -305,7 +389,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (data.success) {
           sessionStorage.setItem(
-            "doctors_flash",
+            "doctor_flash",
             data.message || "Doctor reactivated.",
           );
           window.location.reload();
@@ -324,7 +408,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // SEARCH + FILTER
   // =========================================================
   const searchInput = document.getElementById("filterSearch");
-  const statusFilter = document.getElementById("filterStatus");
+  const showArchived = document.getElementById("showArchived");
   const filterClear = document.getElementById("filterClear");
   const filterSummary = document.getElementById("filterSummary");
   const filteredCount = document.getElementById("filteredCount");
@@ -336,42 +420,52 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function applyFilters() {
     const q = (searchInput?.value || "").toLowerCase().trim();
-    const status = statusFilter?.value || "";
+    const showInactiveOnly = showArchived?.checked || false;
 
     let visible = 0;
 
     rows.forEach((row) => {
       const matchesSearch = q === "" || (row.dataset.search || "").includes(q);
-      const matchesStatus = status === "" || row.dataset.status === status;
 
-      const show = matchesSearch && matchesStatus;
+      const isArchived = row.dataset.status === "0";
+      const matchesArchiveFilter = showInactiveOnly ? isArchived : !isArchived;
+
+      const show = matchesSearch && matchesArchiveFilter;
       row.classList.toggle("hidden", !show);
       if (show) visible++;
     });
 
     if (filteredCount) filteredCount.textContent = visible;
 
-    const isFiltering = q !== "" || status !== "";
+    const isFiltering = q !== "" || showInactiveOnly;
     if (filterSummary) filterSummary.classList.toggle("hidden", !isFiltering);
     if (emptyState) emptyState.classList.toggle("hidden", visible > 0);
+
+    if (filterClear) {
+      filterClear.classList.toggle("hidden", !isFiltering);
+      filterClear.classList.toggle("inline-flex", isFiltering);
+    }
   }
 
   if (searchInput) searchInput.addEventListener("input", applyFilters);
-  if (statusFilter) statusFilter.addEventListener("change", applyFilters);
+  if (showArchived) showArchived.addEventListener("change", applyFilters);
   if (filterClear) {
     filterClear.addEventListener("click", () => {
       searchInput.value = "";
-      statusFilter.value = "";
+      showArchived.checked = false;
       applyFilters();
     });
   }
 
+  applyFilters();
+  refreshSpecializationUI();
+
   // =========================================================
   // Flash message
   // =========================================================
-  const flash = sessionStorage.getItem("doctors_flash");
+  const flash = sessionStorage.getItem("doctor_flash");
   if (flash) {
-    sessionStorage.removeItem("doctors_flash");
+    sessionStorage.removeItem("doctor_flash");
     showAlert(flash, "success");
   }
 });
