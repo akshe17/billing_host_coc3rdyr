@@ -12,7 +12,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const submitLbl = document.getElementById("roomSubmitLabel");
   const openCreate = document.getElementById("openCreateBtn");
 
-  // Delete confirm modal
+  // Archive confirm
+  const confirmModal = document.getElementById("confirmModal");
+  const confirmRoomNumber = document.getElementById("confirmRoomNumber");
+  const confirmDeactivateBtn = document.getElementById("confirmDeactivateBtn");
+  const confirmDeactivateLbl = document.getElementById(
+    "confirmDeactivateLabel",
+  );
+
+  // Delete confirm
   const deleteModal = document.getElementById("deleteModal");
   const deleteRoomNumber = document.getElementById("deleteRoomNumber");
   const confirmDeleteBtn = document.getElementById("confirmDeleteBtn");
@@ -48,15 +56,23 @@ document.addEventListener("DOMContentLoaded", () => {
   const closeModal = (el) => el.classList.add("hidden");
 
   // ---------- Modal close handlers ----------
-  document.querySelectorAll("[data-close-modal]").forEach((el) => {
-    el.addEventListener("click", () => closeModal(modal));
-  });
-  document.querySelectorAll("[data-close-delete]").forEach((el) => {
-    el.addEventListener("click", () => closeModal(deleteModal));
-  });
+  document
+    .querySelectorAll("[data-close-modal]")
+    .forEach((el) => el.addEventListener("click", () => closeModal(modal)));
+  document
+    .querySelectorAll("[data-close-confirm]")
+    .forEach((el) =>
+      el.addEventListener("click", () => closeModal(confirmModal)),
+    );
+  document
+    .querySelectorAll("[data-close-delete]")
+    .forEach((el) =>
+      el.addEventListener("click", () => closeModal(deleteModal)),
+    );
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       closeModal(modal);
+      closeModal(confirmModal);
       closeModal(deleteModal);
     }
   });
@@ -134,16 +150,14 @@ document.addEventListener("DOMContentLoaded", () => {
         sessionStorage.setItem("room_flash", data.message || "Saved.");
         window.location.reload();
       } else {
-        if (data.errors) {
+        if (data.errors)
           Object.entries(data.errors).forEach(([f, m]) => setError(form, f, m));
-        }
         showAlert(data.message || "Save failed.", "error");
       }
     } catch (err) {
       const res = err.response?.data;
-      if (res?.errors) {
+      if (res?.errors)
         Object.entries(res.errors).forEach(([f, m]) => setError(form, f, m));
-      }
       showAlert(res?.message || "Save failed.", "error");
     } finally {
       submitBtn.disabled = false;
@@ -152,15 +166,101 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // =========================================================
-  // DELETE
+  // ARCHIVE (soft delete)
+  // =========================================================
+  document.querySelectorAll(".deactivate-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      confirmRoomNumber.textContent = btn.dataset.roomNumber || "this room";
+      confirmDeactivateBtn.dataset.roomId = btn.dataset.roomId;
+      openModal(confirmModal);
+    });
+  });
+
+  if (confirmDeactivateBtn) {
+    confirmDeactivateBtn.addEventListener("click", async () => {
+      const id = confirmDeactivateBtn.dataset.roomId;
+      if (!id) return;
+
+      confirmDeactivateBtn.disabled = true;
+      confirmDeactivateLbl.textContent = "Archiving…";
+
+      try {
+        const { data } = await axios.post(
+          `${baseUrl}/api/rooms/toggle-active.php?id=${id}`,
+          {},
+          {
+            headers: { "Content-Type": "application/json" },
+            withCredentials: true,
+          },
+        );
+
+        if (data.success) {
+          closeModal(confirmModal);
+          sessionStorage.setItem(
+            "room_flash",
+            data.message || "Room archived.",
+          );
+          window.location.reload();
+        } else {
+          closeModal(confirmModal);
+          showAlert(data.message || "Action failed.", "error");
+        }
+      } catch (err) {
+        closeModal(confirmModal);
+        showAlert(err.response?.data?.message || "Action failed.", "error");
+      } finally {
+        confirmDeactivateBtn.disabled = false;
+        confirmDeactivateLbl.textContent = "Archive Room";
+      }
+    });
+  }
+
+  // =========================================================
+  // REACTIVATE
+  // =========================================================
+  document.querySelectorAll(".reactivate-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.roomId;
+      if (!id) return;
+
+      btn.disabled = true;
+
+      try {
+        const { data } = await axios.post(
+          `${baseUrl}/api/rooms/toggle-active.php?id=${id}`,
+          {},
+          {
+            headers: { "Content-Type": "application/json" },
+            withCredentials: true,
+          },
+        );
+
+        if (data.success) {
+          sessionStorage.setItem(
+            "room_flash",
+            data.message || "Room reactivated.",
+          );
+          window.location.reload();
+        } else {
+          showAlert(data.message || "Action failed.", "error");
+        }
+      } catch (err) {
+        showAlert(err.response?.data?.message || "Action failed.", "error");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
+
+  // =========================================================
+  // PERMANENT DELETE (archived only)
   // =========================================================
   let pendingDeleteId = null;
 
   document.querySelectorAll(".delete-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
-      pendingDeleteId = btn.getAttribute("data-room-id");
-      deleteRoomNumber.textContent =
-        btn.getAttribute("data-room-number") || "this room";
+      pendingDeleteId = btn.dataset.roomId;
+      deleteRoomNumber.textContent = btn.dataset.roomNumber || "this room";
       openModal(deleteModal);
     });
   });
@@ -195,16 +295,17 @@ document.addEventListener("DOMContentLoaded", () => {
         showAlert(err.response?.data?.message || "Delete failed.", "error");
       } finally {
         confirmDeleteBtn.disabled = false;
-        confirmDeleteLbl.textContent = "Yes, delete";
+        confirmDeleteLbl.textContent = "Yes, delete permanently";
         pendingDeleteId = null;
       }
     });
   }
 
   // =========================================================
-  // SEARCH
+  // SEARCH + FILTER
   // =========================================================
   const searchInput = document.getElementById("filterSearch");
+  const showArchived = document.getElementById("showArchived");
   const filterClear = document.getElementById("filterClear");
   const filterSummary = document.getElementById("filterSummary");
   const filteredCount = document.getElementById("filteredCount");
@@ -216,17 +317,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function applyFilters() {
     const q = (searchInput?.value || "").toLowerCase().trim();
+    const showInactiveOnly = showArchived?.checked || false;
+
     let visible = 0;
 
     rows.forEach((row) => {
-      const match = q === "" || (row.dataset.search || "").includes(q);
-      row.classList.toggle("hidden", !match);
-      if (match) visible++;
+      const matchesSearch = q === "" || (row.dataset.search || "").includes(q);
+
+      const isArchived = row.dataset.status === "0";
+      const matchesArchiveFilter = showInactiveOnly ? isArchived : !isArchived;
+
+      const show = matchesSearch && matchesArchiveFilter;
+      row.classList.toggle("hidden", !show);
+      if (show) visible++;
     });
 
     if (filteredCount) filteredCount.textContent = visible;
 
-    const isFiltering = q !== "";
+    const isFiltering = q !== "" || showInactiveOnly;
     if (filterSummary) filterSummary.classList.toggle("hidden", !isFiltering);
     if (emptyState) emptyState.classList.toggle("hidden", visible > 0);
 
@@ -237,9 +345,11 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   if (searchInput) searchInput.addEventListener("input", applyFilters);
+  if (showArchived) showArchived.addEventListener("change", applyFilters);
   if (filterClear) {
     filterClear.addEventListener("click", () => {
       searchInput.value = "";
+      showArchived.checked = false;
       applyFilters();
     });
   }
@@ -247,7 +357,7 @@ document.addEventListener("DOMContentLoaded", () => {
   applyFilters();
 
   // =========================================================
-  // Flash message
+  // Flash
   // =========================================================
   const flash = sessionStorage.getItem("room_flash");
   if (flash) {

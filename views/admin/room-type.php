@@ -3,10 +3,7 @@
 require_once __DIR__ . '/../../controllers/RoomTypeController.php';
 
 $roomTypes = (new RoomTypeController($pdo))->getAll();
-
-$totalRoomTypes    = count($roomTypes);
-$activeRoomTypes   = count(array_filter($roomTypes, fn($rt) => (int)$rt['is_active'] === 1));
-$archivedRoomTypes = $totalRoomTypes - $activeRoomTypes;
+$totalRoomTypes = count($roomTypes);
 ?>
 
 <!-- Page header -->
@@ -26,25 +23,15 @@ $archivedRoomTypes = $totalRoomTypes - $activeRoomTypes;
 
 <div id="alert" class="hidden mb-5 rounded-lg px-4 py-3 text-sm border"></div>
 
-<!-- Stat cards -->
-<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-    <div class="bg-white rounded-xl border border-slate-200 p-5">
-        <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Total Types</p>
-        <p class="mt-2 text-2xl font-bold text-slate-900"><?= $totalRoomTypes ?></p>
-    </div>
-    <div class="bg-white rounded-xl border border-slate-200 p-5">
-        <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Active</p>
-        <p class="mt-2 text-2xl font-bold text-emerald-600"><?= $activeRoomTypes ?></p>
-    </div>
-    <div class="bg-white rounded-xl border border-slate-200 p-5">
-        <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Archived</p>
-        <p class="mt-2 text-2xl font-bold text-slate-400"><?= $archivedRoomTypes ?></p>
-    </div>
+<!-- Stat card -->
+<div class="bg-white rounded-xl border border-slate-200 p-5 mb-6 max-w-xs">
+    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide">Total Room Types</p>
+    <p class="mt-2 text-2xl font-bold text-slate-900"><?= $totalRoomTypes ?></p>
 </div>
 
 <!-- Filter bar -->
 <div class="bg-white rounded-xl border border-slate-200 p-4 mb-4">
-    <div class="flex flex-col lg:flex-row lg:items-end gap-3">
+    <div class="flex flex-col sm:flex-row sm:items-end gap-3">
         <div class="flex-1">
             <label class="block text-xs font-medium text-slate-500 mb-1.5">Search</label>
             <div class="relative">
@@ -59,22 +46,13 @@ $archivedRoomTypes = $totalRoomTypes - $activeRoomTypes;
             </div>
         </div>
 
-        <div class="flex items-center gap-3">
-            <label class="inline-flex items-center gap-2 text-sm text-slate-700 select-none cursor-pointer whitespace-nowrap
-                          rounded-lg border border-slate-300 px-3 py-2 hover:bg-slate-50">
-                <input type="checkbox" id="showArchived"
-                       class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
-                Show archived only
-            </label>
-
-            <button type="button" id="filterClear"
-                    class="hidden items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
-                </svg>
-                Clear
-            </button>
-        </div>
+        <button type="button" id="filterClear"
+                class="hidden items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 self-start sm:self-auto">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+            Clear
+        </button>
     </div>
 
     <div id="filterSummary" class="hidden mt-3 pt-3 border-t border-slate-100 text-xs text-slate-500">
@@ -93,15 +71,13 @@ $archivedRoomTypes = $totalRoomTypes - $activeRoomTypes;
                     <th class="text-right px-6 py-3.5 font-semibold text-slate-700 text-xs uppercase tracking-wide">Rate / Day</th>
                     <th class="text-center px-6 py-3.5 font-semibold text-slate-700 text-xs uppercase tracking-wide">Capacity</th>
                     <th class="text-center px-6 py-3.5 font-semibold text-slate-700 text-xs uppercase tracking-wide">Meals</th>
-                    <th class="text-left px-6 py-3.5 font-semibold text-slate-700 text-xs uppercase tracking-wide">Status</th>
                     <th class="text-right px-6 py-3.5 font-semibold text-slate-700 text-xs uppercase tracking-wide">Actions</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
                 <?php foreach ($roomTypes as $rt): ?>
                     <tr class="hover:bg-slate-50 room-type-row"
-                        data-search="<?= htmlspecialchars(strtolower($rt['room_type_name'] . ' ' . ($rt['description'] ?? ''))) ?>"
-                        data-status="<?= (int)$rt['is_active'] ?>">
+                        data-search="<?= htmlspecialchars(strtolower($rt['room_type_name'] . ' ' . ($rt['description'] ?? ''))) ?>">
 
                         <!-- Name -->
                         <td class="px-6 py-4">
@@ -146,21 +122,6 @@ $archivedRoomTypes = $totalRoomTypes - $activeRoomTypes;
                             <?php endif; ?>
                         </td>
 
-                        <!-- Status -->
-                        <td class="px-6 py-4">
-                            <?php if ((int)$rt['is_active'] === 1): ?>
-                                <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                    Active
-                                </span>
-                            <?php else: ?>
-                                <span class="inline-flex items-center gap-1.5 rounded-full bg-slate-100 border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600">
-                                    <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                                    Archived
-                                </span>
-                            <?php endif; ?>
-                        </td>
-
                         <!-- Actions -->
                         <td class="px-6 py-4 text-right whitespace-nowrap">
                             <div class="inline-flex items-center gap-1.5">
@@ -174,37 +135,15 @@ $archivedRoomTypes = $totalRoomTypes - $activeRoomTypes;
                                     Edit
                                 </button>
 
-                                <?php if ((int)$rt['is_active'] === 1): ?>
-                                    <button type="button"
-                                            class="deactivate-btn inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 hover:border-rose-300"
-                                            data-room-type-id="<?= (int)$rt['room_type_id'] ?>"
-                                            data-room-type-name="<?= htmlspecialchars($rt['room_type_name']) ?>">
-                                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
-                                        </svg>
-                                        Archive
-                                    </button>
-                                <?php else: ?>
-                                    <button type="button"
-                                            class="reactivate-btn inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300"
-                                            data-room-type-id="<?= (int)$rt['room_type_id'] ?>"
-                                            data-room-type-name="<?= htmlspecialchars($rt['room_type_name']) ?>">
-                                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                                        </svg>
-                                        Reactivate
-                                    </button>
-
-                                    <button type="button"
-                                            class="delete-btn inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700"
-                                            data-room-type-id="<?= (int)$rt['room_type_id'] ?>"
-                                            data-room-type-name="<?= htmlspecialchars($rt['room_type_name']) ?>">
-                                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                                        </svg>
-                                        Delete
-                                    </button>
-                                <?php endif; ?>
+                                <button type="button"
+                                        class="delete-btn inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 hover:border-rose-300"
+                                        data-room-type-id="<?= (int)$rt['room_type_id'] ?>"
+                                        data-room-type-name="<?= htmlspecialchars($rt['room_type_name']) ?>">
+                                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    </svg>
+                                    Delete
+                                </button>
 
                             </div>
                         </td>
@@ -221,8 +160,8 @@ $archivedRoomTypes = $totalRoomTypes - $activeRoomTypes;
                 <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
             </svg>
         </div>
-        <p class="text-sm font-medium text-slate-700">No room types match your filters</p>
-        <p class="text-xs text-slate-500 mt-1">Try adjusting your search or clearing the filters.</p>
+        <p class="text-sm font-medium text-slate-700">No room types match your search</p>
+        <p class="text-xs text-slate-500 mt-1">Try adjusting your search.</p>
     </div>
 </div>
 
@@ -315,42 +254,7 @@ $archivedRoomTypes = $totalRoomTypes - $activeRoomTypes;
     </div>
 </div>
 
-<!-- ============ CONFIRM ARCHIVE MODAL ============ -->
-<div id="confirmModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
-    <div class="absolute inset-0 bg-slate-900/50" data-close-confirm></div>
-
-    <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md">
-        <div class="p-6">
-            <div class="flex items-start gap-4">
-                <div class="shrink-0 w-11 h-11 rounded-full bg-rose-50 flex items-center justify-center text-rose-600">
-                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M5 19h14a2 2 0 001.84-2.75L13.74 4a2 2 0 00-3.48 0L3.16 16.25A2 2 0 005 19z"/>
-                    </svg>
-                </div>
-                <div>
-                    <h3 class="text-base font-semibold text-slate-900">Archive this room type?</h3>
-                    <p class="mt-1.5 text-sm text-slate-500">
-                        <strong id="confirmRoomTypeName" class="text-slate-700"></strong> will no longer be selectable for new rooms.
-                        Existing rooms keep their type — you can reactivate it later.
-                    </p>
-                </div>
-            </div>
-        </div>
-
-        <div class="px-6 py-4 border-t border-slate-200 bg-slate-50 rounded-b-2xl flex items-center justify-end gap-3">
-            <button type="button" data-close-confirm
-                    class="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                Cancel
-            </button>
-            <button type="button" id="confirmDeactivateBtn"
-                    class="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60">
-                <span id="confirmDeactivateLabel">Archive Room Type</span>
-            </button>
-        </div>
-    </div>
-</div>
-
-<!-- ============ CONFIRM PERMANENT DELETE MODAL ============ -->
+<!-- ============ CONFIRM DELETE MODAL ============ -->
 <div id="deleteModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
     <div class="absolute inset-0 bg-slate-900/50" data-close-delete></div>
 
@@ -363,13 +267,13 @@ $archivedRoomTypes = $totalRoomTypes - $activeRoomTypes;
                     </svg>
                 </div>
                 <div>
-                    <h3 class="text-base font-semibold text-slate-900">Permanently delete this room type?</h3>
+                    <h3 class="text-base font-semibold text-slate-900">Delete this room type?</h3>
                     <p class="mt-1.5 text-sm text-slate-500">
-                        <strong id="deleteRoomTypeName" class="text-slate-700"></strong> will be permanently removed from the database.
+                        <strong id="deleteRoomTypeName" class="text-slate-700"></strong> will be permanently removed.
                         This action cannot be undone.
                     </p>
                     <p class="mt-2 text-xs text-slate-500">
-                        If the room type is still used by any room, the delete will be blocked and you'll be notified.
+                        If any room is still using this type, the delete will be blocked.
                     </p>
                 </div>
             </div>
@@ -382,7 +286,7 @@ $archivedRoomTypes = $totalRoomTypes - $activeRoomTypes;
             </button>
             <button type="button" id="confirmDeleteBtn"
                     class="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60">
-                <span id="confirmDeleteLabel">Yes, delete permanently</span>
+                <span id="confirmDeleteLabel">Yes, delete</span>
             </button>
         </div>
     </div>

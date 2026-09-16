@@ -30,7 +30,7 @@ class PatientController
              INNER JOIN `gender` g ON g.gender_id = p.gender_id
              LEFT JOIN `admission` a
                     ON a.patient_id = p.patient_id
-                   AND a.status_id IN (1, 3)   -- Admitted or Transferred = active
+                   AND a.status_id IN (1, 3)
              LEFT JOIN `admission_status` ast ON ast.status_id = a.status_id
              LEFT JOIN `room_assignment` ra
                     ON ra.admission_id = a.admission_id
@@ -43,7 +43,6 @@ class PatientController
 
     public function getDetails(int $patientId): ?array
     {
-        // Patient + active admission
         $stmt = $this->pdo->prepare(
             'SELECT p.*,
                     a.admission_id, a.status_id AS admission_status_id,
@@ -82,10 +81,11 @@ class PatientController
             $stmt->execute([$admissionId]);
             $patient['room_assignment'] = $stmt->fetch() ?: null;
 
-            // Doctors
+            // Doctors — include the doctor's own consultation_fee (authoritative)
             $stmt = $this->pdo->prepare(
                 'SELECT ad.admission_doctor_id, ad.doctor_id, ad.doctor_role,
                         ad.consultation_fee_charged,
+                        d.consultation_fee AS doctor_default_fee,
                         u.first_name, u.last_name
                  FROM `admission_doctor` ad
                  INNER JOIN `doctor` d ON d.doctor_id = ad.doctor_id
@@ -122,19 +122,23 @@ class PatientController
         return $this->pdo->query('SELECT status_id, status_name, color_code FROM `admission_status` ORDER BY status_id')->fetchAll();
     }
 
+    // ---- Available rooms: only is_active = 1 AND Available status ----
     public function getAvailableRooms(): array
     {
         return $this->pdo->query(
             'SELECT r.room_id, r.room_number, r.floor_level, r.building,
-                    rt.room_type_name, rs.status_name, rs.color_code
+                    rt.room_type_name, rt.rate_per_day,
+                    rs.status_name, rs.color_code
              FROM `room` r
              INNER JOIN `room_type` rt ON rt.room_type_id = r.room_type_id
              INNER JOIN `room_status` rs ON rs.status_id = r.status_id
-             WHERE rs.status_name = "Available"
+             WHERE r.is_active = 1
+               AND rs.status_name = "Available"
              ORDER BY r.room_number'
         )->fetchAll();
     }
 
+    // ---- Doctors: fee comes from the doctor record ----
     public function getDoctors(): array
     {
         return $this->pdo->query(
@@ -171,7 +175,6 @@ class PatientController
         try {
             $this->pdo->beginTransaction();
 
-            // 1. Insert patient
             $stmt = $this->pdo->prepare(
                 'INSERT INTO `patient`
                     (gender_id, first_name, last_name, birth_date, contact_number, address, email,
@@ -192,7 +195,6 @@ class PatientController
             ]);
             $patientId = (int)$this->pdo->lastInsertId();
 
-            // 2. Admission (optional)
             $admissionId = null;
             if (!empty($data['create_admission'])) {
                 $admissionId = $this->createAdmission($patientId, $data);
@@ -238,7 +240,6 @@ class PatientController
         try {
             $this->pdo->beginTransaction();
 
-            // 1. Update patient
             $stmt = $this->pdo->prepare(
                 'UPDATE `patient`
                  SET gender_id = ?, first_name = ?, last_name = ?, birth_date = ?,
@@ -260,11 +261,9 @@ class PatientController
                 $patientId,
             ]);
 
-            // 2. Admission
             $admissionId = (int)($data['admission_id'] ?? 0);
 
             if ($admissionId > 0) {
-                // Update existing
                 $stmt = $this->pdo->prepare(
                     'UPDATE `admission`
                      SET status_id = ?, chief_complaint = ?, admission_type = ?, notes = ?
@@ -278,22 +277,18 @@ class PatientController
                     $admissionId,
                 ]);
 
-                // Replace room assignment (delete active, re-add)
                 $stmt = $this->pdo->prepare('UPDATE `room_assignment` SET is_active = 0, end_datetime = NOW() WHERE admission_id = ? AND is_active = 1');
                 $stmt->execute([$admissionId]);
                 $this->saveRoomAssignment($admissionId, $data);
 
-                // Replace doctors
                 $stmt = $this->pdo->prepare('DELETE FROM `admission_doctor` WHERE admission_id = ?');
                 $stmt->execute([$admissionId]);
                 $this->saveAdmissionDoctors($admissionId, $data);
 
-                // Replace diagnoses
                 $stmt = $this->pdo->prepare('DELETE FROM `admission_diagnosis` WHERE admission_id = ?');
                 $stmt->execute([$admissionId]);
                 $this->saveAdmissionDiagnoses($admissionId, $data);
             } else if (!empty($data['create_admission'])) {
-                // Create new admission
                 $admissionId = $this->createAdmission($patientId, $data);
                 $this->saveRoomAssignment($admissionId, $data);
                 $this->saveAdmissionDoctors($admissionId, $data);
@@ -344,7 +339,7 @@ class PatientController
 
     private function createAdmission(int $patientId, array $data): int
     {
-        $statusId = (int)($data['admission_status_id'] ?? 1);   // default to Admitted
+        $statusId = (int)($data['admission_status_id'] ?? 1);
 
         $stmt = $this->pdo->prepare(
             'INSERT INTO `admission`
@@ -372,15 +367,25 @@ class PatientController
         $roomId = (int)($data['room_id'] ?? 0);
         if ($roomId <= 0) return;
 
-        // Fetch rate at assignment time
+        // Only allow active + Available rooms
         $stmt = $this->pdo->prepare(
             'SELECT rt.rate_per_day
              FROM `room` r
              INNER JOIN `room_type` rt ON rt.room_type_id = r.room_type_id
-             WHERE r.room_id = ? LIMIT 1'
+             INNER JOIN `room_status` rs ON rs.status_id = r.status_id
+             WHERE r.room_id = ?
+               AND r.is_active = 1
+               AND rs.status_name = "Available"
+             LIMIT 1'
         );
         $stmt->execute([$roomId]);
-        $rate = (float)($stmt->fetchColumn() ?: 0);
+        $rate = $stmt->fetchColumn();
+        if ($rate === false) {
+            // Room not available anymore — skip silently
+            return;
+        }
+
+        $rate = (float)$rate;
 
         $stmt = $this->pdo->prepare(
             'INSERT INTO `room_assignment`
@@ -418,14 +423,10 @@ class PatientController
 
             $role = !empty($d['doctor_role']) ? $d['doctor_role'] : 'Attending';
 
-            // Fee default = doctor's consultation_fee
-            $fee = isset($d['consultation_fee_charged']) && is_numeric($d['consultation_fee_charged'])
-                ? (float)$d['consultation_fee_charged']
-                : (function () use ($doctorId) {
-                    $s = $this->pdo->prepare('SELECT consultation_fee FROM `doctor` WHERE doctor_id = ? LIMIT 1');
-                    $s->execute([$doctorId]);
-                    return (float)($s->fetchColumn() ?: 0);
-                })();
+            // ALWAYS use the doctor's own consultation_fee — ignore any client-supplied value
+            $stmtFee = $this->pdo->prepare('SELECT consultation_fee FROM `doctor` WHERE doctor_id = ? LIMIT 1');
+            $stmtFee->execute([$doctorId]);
+            $fee = (float)($stmtFee->fetchColumn() ?: 0);
 
             $stmt->execute([$admissionId, $doctorId, $role, $fee]);
         }

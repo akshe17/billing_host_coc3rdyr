@@ -7,12 +7,16 @@ class RoomController
 
     public function __construct(PDO $pdo) { $this->pdo = $pdo; }
 
-    // ---------- READ: all rooms with their type + status ----------
+    // =========================================================
+    // READ
+    // =========================================================
+
+    // All rooms with their type + status
     public function getAll(): array
     {
         return $this->pdo->query(
             'SELECT r.room_id, r.room_type_id, r.status_id, r.room_number,
-                    r.floor_level, r.building,
+                    r.floor_level, r.building, r.is_active,
                     rt.room_type_name,
                     rs.status_name, rs.color_code
              FROM `room` r
@@ -22,18 +26,17 @@ class RoomController
         )->fetchAll();
     }
 
-    // ---------- READ: active room types for dropdown ----------
+    // Room types for dropdown
     public function getRoomTypes(): array
     {
         return $this->pdo->query(
             'SELECT room_type_id, room_type_name
              FROM `room_type`
-             WHERE is_active = 1
              ORDER BY room_type_name'
         )->fetchAll();
     }
 
-    // ---------- READ: statuses for dropdown ----------
+    // Statuses for dropdown
     public function getStatuses(): array
     {
         return $this->pdo->query(
@@ -43,7 +46,10 @@ class RoomController
         )->fetchAll();
     }
 
-    // ---------- CREATE ----------
+    // =========================================================
+    // CREATE
+    // =========================================================
+
     public function create(): void
     {
         $this->guard();
@@ -58,8 +64,8 @@ class RoomController
 
         $stmt = $this->pdo->prepare(
             'INSERT INTO `room`
-                (room_type_id, status_id, room_number, floor_level, building)
-             VALUES (?, ?, ?, ?, ?)'
+                (room_type_id, status_id, room_number, floor_level, building, is_active)
+             VALUES (?, ?, ?, ?, ?, 1)'
         );
         $stmt->execute([
             (int)$data['room_type_id'],
@@ -76,7 +82,10 @@ class RoomController
         ]);
     }
 
-    // ---------- UPDATE ----------
+    // =========================================================
+    // UPDATE
+    // =========================================================
+
     public function update(): void
     {
         $this->guard();
@@ -109,7 +118,53 @@ class RoomController
         $this->json(200, ['success' => true, 'message' => 'Room updated successfully.']);
     }
 
-    // ---------- DELETE (hard, with FK check) ----------
+    // =========================================================
+    // SOFT DELETE / REACTIVATE
+    // =========================================================
+
+    public function toggleActive(): void
+    {
+        $this->guard();
+
+        $id = (int)($_GET['id'] ?? 0);
+        if ($id <= 0) $this->json(400, ['success' => false, 'message' => 'Missing room id.']);
+
+        $stmt = $this->pdo->prepare('SELECT is_active FROM `room` WHERE room_id = ? LIMIT 1');
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        if (!$row) $this->json(404, ['success' => false, 'message' => 'Room not found.']);
+
+        $newState = ((int)$row['is_active'] === 1) ? 0 : 1;
+
+        // Extra check: don't archive a room that's currently assigned to an active admission
+        if ($newState === 0) {
+            $stmt = $this->pdo->prepare(
+                'SELECT COUNT(*) FROM `room_assignment`
+                 WHERE room_id = ? AND is_active = 1 AND end_datetime IS NULL'
+            );
+            $stmt->execute([$id]);
+            if ((int)$stmt->fetchColumn() > 0) {
+                $this->json(409, [
+                    'success' => false,
+                    'message' => 'Cannot archive — this room is currently assigned to an active admission.',
+                ]);
+            }
+        }
+
+        $stmt = $this->pdo->prepare('UPDATE `room` SET is_active = ? WHERE room_id = ?');
+        $stmt->execute([$newState, $id]);
+
+        $this->json(200, [
+            'success'   => true,
+            'message'   => $newState === 1 ? 'Room reactivated.' : 'Room archived.',
+            'is_active' => $newState,
+        ]);
+    }
+
+    // =========================================================
+    // PERMANENT DELETE (archived, no FK references)
+    // =========================================================
+
     public function delete(): void
     {
         $this->guard();
@@ -117,14 +172,17 @@ class RoomController
         $id = (int)($_GET['id'] ?? 0);
         if ($id <= 0) $this->json(400, ['success' => false, 'message' => 'Missing room id.']);
 
-        // Confirm it exists
-        $stmt = $this->pdo->prepare('SELECT room_id FROM `room` WHERE room_id = ? LIMIT 1');
+        // Must already be archived
+        $stmt = $this->pdo->prepare('SELECT is_active FROM `room` WHERE room_id = ? LIMIT 1');
         $stmt->execute([$id]);
-        if (!$stmt->fetch()) {
-            $this->json(404, ['success' => false, 'message' => 'Room not found.']);
+        $row = $stmt->fetch();
+        if (!$row) $this->json(404, ['success' => false, 'message' => 'Room not found.']);
+
+        if ((int)$row['is_active'] === 1) {
+            $this->json(409, ['success' => false, 'message' => 'Archive the room first before deleting.']);
         }
 
-        // Check for FK references from room_assignment
+        // Check FK references from room_assignment
         $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM `room_assignment` WHERE room_id = ?');
         $stmt->execute([$id]);
         $refCount = (int)$stmt->fetchColumn();
@@ -137,14 +195,16 @@ class RoomController
             ]);
         }
 
-        // Safe to delete
         $stmt = $this->pdo->prepare('DELETE FROM `room` WHERE room_id = ?');
         $stmt->execute([$id]);
 
-        $this->json(200, ['success' => true, 'message' => 'Room deleted.']);
+        $this->json(200, ['success' => true, 'message' => 'Room permanently deleted.']);
     }
 
-    // ---------- HELPERS ----------
+    // =========================================================
+    // HELPERS
+    // =========================================================
+
     private function guard(): void
     {
         header('Content-Type: application/json; charset=utf-8');
@@ -175,7 +235,7 @@ class RoomController
         if ($typeId <= 0) {
             $errors['room_type_id'] = 'Please select a room type.';
         } else {
-            $stmt = $this->pdo->prepare('SELECT room_type_id FROM `room_type` WHERE room_type_id = ? AND is_active = 1 LIMIT 1');
+            $stmt = $this->pdo->prepare('SELECT room_type_id FROM `room_type` WHERE room_type_id = ? LIMIT 1');
             $stmt->execute([$typeId]);
             if (!$stmt->fetch()) {
                 $errors['room_type_id'] = 'Selected room type is not valid.';

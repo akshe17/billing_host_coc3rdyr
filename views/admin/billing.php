@@ -136,6 +136,7 @@ foreach ($statements as $s) {
                     $search = strtolower($s['first_name'] . ' ' . $s['last_name'] . ' #' . $s['statement_id'] . ' ' . $s['status_name']);
                 ?>
                     <tr class="hover:bg-slate-50 statement-row"
+                        data-statement-id="<?= (int)$s['statement_id'] ?>"
                         data-search="<?= htmlspecialchars($search) ?>"
                         data-status="<?= htmlspecialchars($s['status_name']) ?>">
 
@@ -205,7 +206,6 @@ foreach ($statements as $s) {
         </table>
     </div>
 
-    <!-- Empty state -->
     <div id="emptyState" class="hidden text-center py-16">
         <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-100 text-slate-400 mb-3">
             <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
@@ -313,7 +313,7 @@ foreach ($statements as $s) {
     </div>
 </div>
 
-<!-- ============ MANAGE STATEMENT MODAL (charges + payments) ============ -->
+<!-- ============ MANAGE STATEMENT MODAL ============ -->
 <div id="manageModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
     <div class="absolute inset-0 bg-slate-900/60" data-close-manage></div>
 
@@ -331,7 +331,6 @@ foreach ($statements as $s) {
             </button>
         </div>
 
-        <!-- Tabs -->
         <div class="border-b border-slate-200 px-6">
             <nav class="flex gap-1 -mb-px">
                 <button type="button" class="manage-tab-btn px-4 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600 whitespace-nowrap" data-mtab="charges">Charges</button>
@@ -341,7 +340,6 @@ foreach ($statements as $s) {
 
         <div class="flex-1 overflow-y-auto p-6">
 
-            <!-- Summary -->
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
                 <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
                     <p class="text-xs text-slate-500">Subtotal</p>
@@ -361,7 +359,6 @@ foreach ($statements as $s) {
                 </div>
             </div>
 
-            <!-- Charges tab -->
             <div class="manage-tab-panel" data-mpanel="charges">
                 <div class="flex items-center justify-between mb-3">
                     <h4 class="text-sm font-semibold text-slate-900">Charges</h4>
@@ -380,20 +377,17 @@ foreach ($statements as $s) {
                             <tr>
                                 <th class="text-left px-4 py-2.5 font-semibold text-slate-700 text-xs uppercase tracking-wide">Item</th>
                                 <th class="text-center px-4 py-2.5 font-semibold text-slate-700 text-xs uppercase tracking-wide">Qty</th>
-                                <th class="text-right px-4 py-2.5 font-semibold text-slate-700 text-xs uppercase tracking-wide">Price</th>
+                                <th class="text-right px-4 py-2.5 font-semibold text-slate-700 text-xs uppercase tracking-wide">Unit Price</th>
                                 <th class="text-right px-4 py-2.5 font-semibold text-slate-700 text-xs uppercase tracking-wide">Line Total</th>
                                 <th class="text-right px-4 py-2.5 font-semibold text-slate-700 text-xs uppercase tracking-wide"></th>
                             </tr>
                         </thead>
-                        <tbody id="chargesBody" class="divide-y divide-slate-100">
-                            <!-- Filled by JS -->
-                        </tbody>
+                        <tbody id="chargesBody" class="divide-y divide-slate-100"></tbody>
                     </table>
                     <p id="noCharges" class="hidden text-center text-sm text-slate-400 py-8">No charges yet.</p>
                 </div>
             </div>
 
-            <!-- Payments tab -->
             <div class="manage-tab-panel hidden" data-mpanel="payments">
                 <div class="flex items-center justify-between mb-3">
                     <h4 class="text-sm font-semibold text-slate-900">Payments</h4>
@@ -417,9 +411,7 @@ foreach ($statements as $s) {
                                 <th class="text-right px-4 py-2.5 font-semibold text-slate-700 text-xs uppercase tracking-wide"></th>
                             </tr>
                         </thead>
-                        <tbody id="paymentsBody" class="divide-y divide-slate-100">
-                            <!-- Filled by JS -->
-                        </tbody>
+                        <tbody id="paymentsBody" class="divide-y divide-slate-100"></tbody>
                     </table>
                     <p id="noPayments" class="hidden text-center text-sm text-slate-400 py-8">No payments yet.</p>
                 </div>
@@ -456,18 +448,42 @@ foreach ($statements as $s) {
                     <option value="">— Select item —</option>
                 </select>
             </div>
+
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1.5">Quantity</label>
-                    <input type="number" id="charge_quantity" required min="1" value="1"
+                    <input type="number" id="charge_quantity" required min="1" step="1" value="1"
                            class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-slate-700 mb-1.5">Unit Price (₱)</label>
-                    <input type="number" id="charge_price" required min="0" step="0.01"
-                           class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    <label class="block text-sm font-medium text-slate-700 mb-1.5">Price (₱)</label>
+                    <input type="number" id="charge_price" required min="0" step="0.01" readonly tabindex="-1"
+                           class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-600 cursor-not-allowed">
                 </div>
             </div>
+
+            <!-- Live summary -->
+            <div id="chargeSummary" class="hidden rounded-lg border border-blue-100 bg-blue-50 p-4 space-y-1.5">
+                <div class="flex items-center justify-between text-xs text-slate-600">
+                    <span>Unit price</span>
+                    <span id="summaryUnitPrice" class="font-medium text-slate-900">₱0.00</span>
+                </div>
+                <div class="flex items-center justify-between text-xs text-slate-600">
+                    <span>Quantity</span>
+                    <span id="summaryQty" class="font-medium text-slate-900">1</span>
+                </div>
+                <div id="summaryTaxRow" class="hidden items-center justify-between text-xs text-slate-600">
+                    <span>Tax (12% — taxable item)</span>
+                    <span id="summaryTax" class="font-medium text-slate-900">₱0.00</span>
+                </div>
+                <div class="flex items-center justify-between border-t border-blue-100 pt-2 mt-2">
+                    <span class="text-sm font-semibold text-slate-900">Total</span>
+                    <span id="summaryLineTotal" class="text-lg font-bold text-blue-700">₱0.00</span>
+                </div>
+            </div>
+
+          
+
             <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1.5">Notes <span class="text-slate-400 font-normal">(optional)</span></label>
                 <input type="text" id="charge_notes" class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">

@@ -400,7 +400,7 @@ $admittedNow      = count(array_filter($patients, fn($p) => !empty($p['admission
                                 </option>
                             <?php endforeach; ?>
                         </select>
-                        <p class="text-xs text-slate-500 mt-2">Only rooms with <strong>Available</strong> status are listed. Once assigned, the room becomes Occupied.</p>
+                        <p class="text-xs text-slate-500 mt-2">Only active rooms with <strong>Available</strong> status are listed. Once assigned, the room becomes Occupied.</p>
                     </div>
                 </div>
 

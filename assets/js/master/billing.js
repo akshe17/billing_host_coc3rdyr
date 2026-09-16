@@ -32,11 +32,24 @@ document.addEventListener("DOMContentLoaded", () => {
   const saveChargeBtn = document.getElementById("saveChargeBtn");
   const saveChargeLbl = document.getElementById("saveChargeLabel");
 
+  // Live summary elements
+  const chargeSummary = document.getElementById("chargeSummary");
+  const summaryUnitPrice = document.getElementById("summaryUnitPrice");
+  const summaryQty = document.getElementById("summaryQty");
+  const summaryTaxRow = document.getElementById("summaryTaxRow");
+  const summaryTax = document.getElementById("summaryTax");
+  const summaryLineTotal = document.getElementById("summaryLineTotal");
+  const chargeItemEl = document.getElementById("charge_item_id");
+  const chargeQuantityEl = document.getElementById("charge_quantity");
+  const chargePriceEl = document.getElementById("charge_price");
+
   // Payment modal
   const paymentModal = document.getElementById("paymentModal");
   const paymentForm = document.getElementById("paymentForm");
   const savePaymentBtn = document.getElementById("savePaymentBtn");
   const savePaymentLbl = document.getElementById("savePaymentLabel");
+
+  const TAX_RATE = 0.12;
 
   // ---------- Read dropdown data from hidden div ----------
   const holder = document.getElementById("billingData");
@@ -56,9 +69,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Populate dropdowns once
-  const chargeItemSelect = document.getElementById("charge_item_id");
-  if (chargeItemSelect) {
+  if (chargeItemEl) {
     CHARGE_ITEMS.forEach((c) => {
       const opt = document.createElement("option");
       opt.value = c.charge_item_id;
@@ -66,7 +77,7 @@ document.addEventListener("DOMContentLoaded", () => {
       opt.dataset.price = c.default_price;
       opt.dataset.taxable = c.is_taxable;
       opt.dataset.unit = c.unit;
-      chargeItemSelect.appendChild(opt);
+      chargeItemEl.appendChild(opt);
     });
   }
 
@@ -130,7 +141,6 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("[data-close-manage]").forEach((el) =>
     el.addEventListener("click", () => {
       closeModal(manageModal);
-      // Refresh the underlying row one more time as a safety net
       if (currentStatementId) {
         loadStatement(currentStatementId).catch(() => {});
       }
@@ -301,7 +311,6 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentStatementId = null;
   let currentStatement = null;
 
-  // Manage tabs
   document.querySelectorAll(".manage-tab-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".manage-tab-btn").forEach((b) => {
@@ -346,17 +355,14 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function renderStatement(s) {
-    // Header
     manageTitle.textContent = `Statement #${s.statement_id}`;
     manageSubtitle.textContent = `${s.first_name} ${s.last_name} · Admission #${s.admission_id} · ${s.status_name}`;
 
-    // Summary
     sumSubtotal.textContent = fmt(s.subtotal_amount);
     sumTax.textContent = fmt(s.tax_amount);
     sumTotal.textContent = fmt(s.total_amount);
     sumBalance.textContent = fmt(s.balance_amount);
 
-    // Charges
     chargesBody.innerHTML = "";
     if (!s.charges || !s.charges.length) {
       noCharges.classList.remove("hidden");
@@ -384,7 +390,6 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // Payments
     paymentsBody.innerHTML = "";
     if (!s.payments || !s.payments.length) {
       noPayments.classList.remove("hidden");
@@ -409,7 +414,6 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // Attach remove handlers
     chargesBody.querySelectorAll(".remove-charge-btn").forEach((b) => {
       b.addEventListener("click", () =>
         removeCharge(s.statement_id, b.dataset.chargeId),
@@ -422,14 +426,12 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Patch the row in the outer table
   function patchOuterRow(s) {
     const row = document.querySelector(
       `.statement-row[data-statement-id="${s.statement_id}"]`,
     );
     if (!row) return;
 
-    // Keep filtering correct
     row.dataset.status = s.status_name || "";
     row.dataset.search = (
       s.first_name +
@@ -470,7 +472,6 @@ document.addEventListener("DOMContentLoaded", () => {
     applyFilters();
   }
 
-  // Recompute top stat cards from all rows
   function refreshStatCards() {
     let billed = 0,
       paid = 0,
@@ -494,7 +495,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Remove charge
   async function removeCharge(statementId, chargeId) {
     if (!confirm("Remove this charge?")) return;
     try {
@@ -520,7 +520,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Remove payment
   async function removePayment(statementId, paymentId) {
     if (!confirm("Remove this payment?")) return;
     try {
@@ -547,38 +546,84 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // =========================================================
-  // ADD CHARGE MODAL
+  // ADD CHARGE MODAL — live price = unit × quantity
   // =========================================================
+
+  // Computes and displays the running "Price" (unit × qty) plus tax info
+  function refreshChargeSummary() {
+    const opt = chargeItemEl.selectedOptions[0];
+    const hasItem = !!chargeItemEl.value;
+
+    if (!hasItem) {
+      chargeSummary.classList.add("hidden");
+      chargePriceEl.value = "";
+      return;
+    }
+
+    const unitPrice = parseFloat(opt?.dataset.price) || 0;
+    const qty = Math.max(1, parseInt(chargeQuantityEl.value, 10) || 1);
+    const isTaxable = opt && opt.dataset.taxable === "1";
+
+    const lineBase = unitPrice * qty;
+    const taxAmt = isTaxable ? lineBase * TAX_RATE : 0;
+    const lineTotal = lineBase + taxAmt;
+
+    // The Price field shows unit × qty (base price, pre-tax)
+    chargePriceEl.value = lineBase.toFixed(2);
+
+    // Live breakdown
+    summaryUnitPrice.textContent = fmt(unitPrice);
+    summaryQty.textContent = qty;
+
+    if (isTaxable) {
+      summaryTaxRow.classList.remove("hidden");
+      summaryTaxRow.classList.add("flex");
+      summaryTax.textContent = fmt(taxAmt);
+    } else {
+      summaryTaxRow.classList.add("hidden");
+      summaryTaxRow.classList.remove("flex");
+    }
+
+    summaryLineTotal.textContent = fmt(lineTotal);
+    chargeSummary.classList.remove("hidden");
+  }
+
+  // Open Add Charge modal
   document.getElementById("addChargeBtn").addEventListener("click", () => {
     chargeForm.reset();
-    document.getElementById("charge_item_id").value = "";
-    document.getElementById("charge_quantity").value = 1;
-    document.getElementById("charge_price").value = "";
+    chargeItemEl.value = "";
+    chargeQuantityEl.value = 1;
+    chargePriceEl.value = "";
     document.getElementById("charge_notes").value = "";
+    chargeSummary.classList.add("hidden");
     openModal(chargeModal);
   });
 
-  // Auto-fill price when item selected
-  document.getElementById("charge_item_id").addEventListener("change", (e) => {
-    const opt = e.target.selectedOptions[0];
-    if (opt && opt.dataset.price) {
-      document.getElementById("charge_price").value = parseFloat(
-        opt.dataset.price,
-      ).toFixed(2);
-    }
-  });
+  // Item change → recompute price
+  chargeItemEl.addEventListener("change", refreshChargeSummary);
+
+  // Quantity change → recompute price live
+  chargeQuantityEl.addEventListener("input", refreshChargeSummary);
+  chargeQuantityEl.addEventListener("change", refreshChargeSummary);
 
   if (saveChargeBtn) {
     saveChargeBtn.addEventListener("click", async () => {
-      const itemId = document.getElementById("charge_item_id").value;
-      const quantity = document.getElementById("charge_quantity").value;
-      const price = document.getElementById("charge_price").value;
+      const itemId = chargeItemEl.value;
+      const quantity = chargeQuantityEl.value;
       const notes = document.getElementById("charge_notes").value;
 
-      if (!itemId || !quantity || !price) {
-        showAlert("Please fill in all required fields.", "error");
+      if (!itemId) {
+        showAlert("Please select a charge item.", "error");
         return;
       }
+      if (!quantity || parseInt(quantity, 10) < 1) {
+        showAlert("Please enter a valid quantity (1 or more).", "error");
+        return;
+      }
+
+      // Send the base unit price to the server (server multiplies by qty itself)
+      const opt = chargeItemEl.selectedOptions[0];
+      const unitPrice = parseFloat(opt?.dataset.price) || 0;
 
       saveChargeBtn.disabled = true;
       saveChargeLbl.textContent = "Adding…";
@@ -586,7 +631,7 @@ document.addEventListener("DOMContentLoaded", () => {
       try {
         const { data } = await axios.post(
           `${baseUrl}/api/billing/add-charge.php?id=${currentStatementId}`,
-          { charge_item_id: itemId, quantity, actual_price: price, notes },
+          { charge_item_id: itemId, quantity, actual_price: unitPrice, notes },
           {
             headers: { "Content-Type": "application/json" },
             withCredentials: true,
@@ -720,7 +765,7 @@ document.addEventListener("DOMContentLoaded", () => {
   applyFilters();
 
   // =========================================================
-  // Flash message
+  // Flash
   // =========================================================
   const flash = sessionStorage.getItem("billing_flash");
   if (flash) {
